@@ -1,0 +1,2 @@
+# WindowsMouseReader
+Simple application made to count and paint incoming WM_MOUSEMOVE messages - based on Windows Desktop Application template coming with Visual Studio 2019 Community Edition.

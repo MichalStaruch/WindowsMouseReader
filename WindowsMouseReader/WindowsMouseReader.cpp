@@ -8,6 +8,7 @@
 
 #define MAX_LOADSTRING 100
 
+
 // Global Variables:
 HINSTANCE hInst;                                // current instance
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
@@ -20,13 +21,17 @@ LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
 
-const long DISPLAY_REFRESH_RATE = 60;
+const UINT DISPLAY_REFRESH_RATE = 60;
 const UINT_PTR IDT_REDRAW_TIMER = 666;
 const UINT REDRAW_INTERVAL = 1000 / DISPLAY_REFRESH_RATE;
+const COLORREF COLOR_BLACK = 0x00000000;
+const std::string TEXT_HELP = "LMB: paint, RMB: points / lines, SPACE: reset. WM_MOUSEMOVE counter: ";
 
-long mouseMoveCounter = 0;
-std::vector<int> points_x(0);
-std::vector<int> points_y(0);
+ULONG mouseMoveCounter = 0;
+BOOL paintActive = FALSE;
+BOOL linesMode = FALSE;
+POINT last = { 0, 0 };
+std::vector<POINT> points(0);
 
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -112,7 +117,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
 
-   if (!hWnd)
+   if (hWnd == NULL)
    {
       return FALSE;
    }
@@ -159,21 +164,33 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_MOUSEMOVE:
         {
             mouseMoveCounter++;
-            int xPos = (int)(short) LOWORD(lParam);
-            int yPos = (int)(short) HIWORD(lParam);
-            points_x.push_back(xPos);
-            points_y.push_back(yPos);
-        }
-        break;
-    case WM_LBUTTONDOWN:
-        {
-            mouseMoveCounter = 0;
-            RECT rect;
-            GetClientRect(hWnd, &rect);
-            InvalidateRect(hWnd, NULL, TRUE);
+            int x = (int)(short) LOWORD(lParam);
+            int y = (int)(short) HIWORD(lParam);
+            POINT point = { x, y };
+            points.push_back(point);
         }
         break;
     case WM_RBUTTONDOWN:
+        linesMode = !linesMode;
+        break;
+    case WM_LBUTTONDOWN:
+        paintActive = TRUE;
+        break;
+    case WM_LBUTTONUP:
+        paintActive = FALSE;
+        break;
+    case WM_KEYDOWN:
+        {
+            if (wParam == VK_SPACE)
+            {
+                mouseMoveCounter = 0;
+                RECT rect;
+                GetClientRect(hWnd, &rect);
+                InvalidateRect(hWnd, NULL, TRUE);
+            }
+        }
+        break;
+    case WM_SIZE:
         {
             mouseMoveCounter = 0;
             RECT rect;
@@ -195,20 +212,36 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_PAINT:
         {
-            std::string counterText = std::to_string(mouseMoveCounter) + "\n";
-            LPCSTR winCounterText = counterText.c_str();
+            RECT rect;
+            GetClientRect(hWnd, &rect);
+
+            std::string text = TEXT_HELP + std::to_string(mouseMoveCounter);
+            LPCSTR winText = text.c_str();
 
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hWnd, &ps);
-            RECT rect;
-            GetClientRect(hWnd, &rect);
-            DrawTextA(hdc, winCounterText, -1, &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
-            for (unsigned i = 0; i < points_x.size(); i++) {
-                SetPixel(hdc, points_x.at(i), points_y.at(i), 0);
+            DrawTextA(hdc, winText, -1, &rect, DT_LEFT | DT_TOP);
+            if (paintActive) {
+                if (linesMode) {
+                    MoveToEx(hdc, last.x, last.y, NULL);
+                    for (UINT i = 0; i < points.size(); i++) {
+                        POINT point = points.at(i);
+                        LineTo(hdc, point.x, point.y);
+                        MoveToEx(hdc, point.x, point.y, NULL);
+                    }
+                } else {
+                    for (UINT i = 0; i < points.size(); i++) {
+                        POINT point = points.at(i);
+                        SetPixel(hdc, point.x, point.y, COLOR_BLACK);
+                    }
+                }
             }
-            points_x.clear();
-            points_y.clear();
             EndPaint(hWnd, &ps);
+
+            if (!points.empty()) {
+                last = points.back();
+            }
+            points.clear();
         }
         break;
     case WM_DESTROY:
